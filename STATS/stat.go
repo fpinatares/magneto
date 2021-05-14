@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
@@ -16,8 +17,6 @@ import (
 
 const NECESSARY_SECUENCE = 4
 const NECESSARY_SECUENCES = 2
-const MUTANT = "Mutant"
-const HUMAN = "Human"
 
 type Stat struct {
 	Mutant int     `json:"count_mutant_dna"`
@@ -28,6 +27,20 @@ type Stat struct {
 type StatDB struct {
 	DnaType string `json:"dna_type"`
 	Count   int    `json:"type_count"`
+}
+
+var EnumDnaType = DnaTypes()
+
+func DnaTypes() *DnaType {
+	return &DnaType{
+		Human:  "Human",
+		Mutant: "Mutant",
+	}
+}
+
+type DnaType struct {
+	Human  string
+	Mutant string
 }
 
 type dependencies struct {
@@ -50,6 +63,7 @@ func main() {
 	lambda.Start(d.GetStats)
 }
 
+// Probar si funciona bien sacando el req
 func (d *dependencies) GetStats(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	stats, err := d.GetStatsFromDB()
 	if err != nil {
@@ -76,16 +90,19 @@ func (d *dependencies) GetStatsFromDB() ([]map[string]*dynamodb.AttributeValue, 
 	return result.Items, nil
 }
 
-func (s *Stat) SetCount(dnaType string, count int) {
-	if dnaType == HUMAN {
+func (s *Stat) SetCount(dnaType string, count int) error {
+	if dnaType == EnumDnaType.Human {
 		s.Human = count
-	} else {
+	} else if dnaType == EnumDnaType.Mutant {
 		s.Mutant = count
+	} else {
+		return errors.New("DNA Type not supported")
 	}
+	return nil
 }
 
-func (s *Stat) SetRatio(countA float64, countB float64) {
-	s.Ratio = countA / countB
+func (s *Stat) CalculateRatio() {
+	s.Ratio = float64(s.Mutant) / float64(s.Human)
 }
 
 func (s *Stat) SetValues(items []map[string]*dynamodb.AttributeValue) error {
@@ -96,7 +113,7 @@ func (s *Stat) SetValues(items []map[string]*dynamodb.AttributeValue) error {
 		}
 		s.SetCount(item.DnaType, item.Count)
 	}
-	s.SetRatio(float64(s.Mutant), float64(s.Human))
+	s.CalculateRatio()
 	return nil
 }
 
