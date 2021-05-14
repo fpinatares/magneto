@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/google/uuid"
@@ -20,21 +21,83 @@ func (m *mockDynamoDBClient) PutItem(input *dynamodb.PutItemInput) (*dynamodb.Pu
 	return nil, nil
 }
 
+func TestDetectMutantWithNotAcceptableContentType(t *testing.T) {
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{},
+	}
+	req.Headers["content-type"] = "application/xml"
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	response, _ := d.DetectMutant(req)
+	if response.StatusCode != 406 {
+		t.Error("406 - Not Acceptable http status code expected. Got:", response.StatusCode)
+	}
+}
+
+func TestDetectMutantWithEmptyBody(t *testing.T) {
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{},
+		Body:    "",
+	}
+	req.Headers["content-type"] = "application/json"
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	response, _ := d.DetectMutant(req)
+	if response.StatusCode != 400 {
+		t.Error("400 - Bad Request http status code expected. Got:", response.StatusCode)
+	}
+}
+
+func TestDetectNoMutantRespondsForbidden(t *testing.T) {
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{},
+		Body:    "{\"dna\":[\"ATGCGA\",\"CAGTGC\",\"TTATTT\",\"AGACGG\",\"GCGTCA\",\"TCACTG\"]}",
+	}
+	req.Headers["content-type"] = "application/json"
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	response, _ := d.DetectMutant(req)
+	if response.StatusCode != 403 {
+		t.Error("403 - Forbidden http status code expected. Got:", response.StatusCode)
+	}
+}
+
+func TestDetectMutantRespondsOk(t *testing.T) {
+	req := events.APIGatewayProxyRequest{
+		Headers: map[string]string{},
+		Body:    "{\"dna\":[\"ATGCGA\",\"CAGTGC\",\"TTATGT\",\"AGAAGG\",\"CCCCTA\",\"TCACTG\"]}",
+	}
+	req.Headers["content-type"] = "application/json"
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	response, _ := d.DetectMutant(req)
+	if response.StatusCode != 200 {
+		t.Error("200 - Ok http status code expected. Got:", response.StatusCode)
+	}
+}
+
 func TestUpdateStats(t *testing.T) {
-	svc := &mockDynamoDBClient{}
-	err := UpdateStats(EnumDnaType.Mutant, svc)
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	err := d.UpdateStats(EnumDnaType.Mutant)
 	if err != nil {
 		t.Error("No error expected updating stats", err)
 	}
 }
 
 func TestSaveDna(t *testing.T) {
-	svc := &mockDynamoDBClient{}
 	dnaData := new(DnaData)
 	dnaData.Uuid = uuid.New().String()
 	dnaData.Type = EnumDnaType.Mutant
-
-	err := SaveDna(*dnaData, svc)
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	err := d.SaveDna(*dnaData)
 	if err != nil {
 		t.Error("No error expected saving dna", err)
 	}
@@ -45,8 +108,10 @@ func TestUpdateData(t *testing.T) {
 	dnaData.Dna = []string{"AAXAAA", "XXXXXX", "XXXXXX", "XXXXXX", "XXXXXX", "XXXXXX"}
 	dnaData.Type = EnumDnaType.Human
 	dnaData.Uuid = uuid.New().String()
-	svc := &mockDynamoDBClient{}
-	err := UpdateData(*dnaData, svc)
+	d := dependencies{
+		db: &mockDynamoDBClient{},
+	}
+	err := d.UpdateData(*dnaData)
 	if err != nil {
 		t.Error("No error expected updating data", err)
 	}
