@@ -62,11 +62,20 @@ type DnaData struct {
 	Type string   `json:"type"`
 }
 
-func main() {
-	lambda.Start(DetectMutant)
+type dependencies struct {
+	db dynamodbiface.DynamoDBAPI
 }
 
-func DetectMutant(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func main() {
+	svc := GetDynamoDBClient()
+	d := dependencies{
+		db: svc,
+	}
+
+	lambda.Start(d.DetectMutant)
+}
+
+func (d *dependencies) DetectMutant(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	if req.Headers["content-type"] != "application/json" && req.Headers["Content-Type"] != "application/json" {
 		return Respond(http.StatusNotAcceptable)
 	}
@@ -76,15 +85,17 @@ func DetectMutant(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResp
 	}
 	dnaData.Uuid = uuid.New().String()
 	dnaData.Type = GetDnaType(dnaData.Dna)
-	svc := GetDynamoDBClient()
-	err = UpdateData(dnaData, svc)
+
+	// TO DO: Make it async
+	err = d.UpdateData(dnaData)
 	if err != nil {
 		return Respond(http.StatusInternalServerError)
 	}
-	if dnaData.Type == EnumDnaType.Mutant {
-		return Respond(http.StatusOK)
+
+	if dnaData.Type != EnumDnaType.Mutant {
+		return Respond(http.StatusForbidden)
 	}
-	return Respond(http.StatusForbidden)
+	return Respond(http.StatusOK)
 }
 
 func GetDnaType(dna []string) string {
@@ -110,18 +121,18 @@ func ParseRequest(body string) (DnaData, error) {
 	return *dnaData, nil
 }
 
-func UpdateData(dnaData DnaData, svc dynamodbiface.DynamoDBAPI) error {
-	err := SaveDna(dnaData, svc)
+func (d *dependencies) UpdateData(dnaData DnaData) error {
+	err := d.SaveDna(dnaData)
 	if err != nil {
 		return err
 	}
-	err = UpdateStats(dnaData.Type, svc)
+	err = d.UpdateStats(dnaData.Type)
 	return err
 }
 
-func UpdateStats(dnaType string, svc dynamodbiface.DynamoDBAPI) error {
+func (d *dependencies) UpdateStats(dnaType string) error {
 	input := CreateUpdateItemInput(dnaType)
-	_, err := svc.UpdateItem(input)
+	_, err := d.db.UpdateItem(input)
 	if err != nil {
 		log.Printf("Got error calling UpdateItem: %s", err)
 		return err
@@ -147,8 +158,7 @@ func CreateUpdateItemInput(dnaType string) *dynamodb.UpdateItemInput {
 	return input
 }
 
-// Tengo que hacer un handling del SaveDna si no lo hago async
-func SaveDna(dnaData DnaData, svc dynamodbiface.DynamoDBAPI) error {
+func (d *dependencies) SaveDna(dnaData DnaData) error {
 	av, err := dynamodbattribute.MarshalMap(dnaData)
 	if err != nil {
 		log.Printf("Got error calling MarshalMap: %s", err)
@@ -159,7 +169,7 @@ func SaveDna(dnaData DnaData, svc dynamodbiface.DynamoDBAPI) error {
 		Item:      av,
 		TableName: aws.String(tableName),
 	}
-	_, err = svc.PutItem(input)
+	_, err = d.db.PutItem(input)
 	if err != nil {
 		log.Printf("Got error calling PutItem: %s", err)
 		return err
