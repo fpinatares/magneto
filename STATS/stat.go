@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 )
 
 const NECESSARY_SECUENCE = 4
@@ -30,49 +30,86 @@ type StatDB struct {
 	Count   int    `json:"type_count"`
 }
 
-func main() {
-	lambda.Start(GetStats)
+type dependencies struct {
+	db dynamodbiface.DynamoDBAPI
 }
 
-func GetStats(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Parse and validate body
+func GetDynamoDBClient() *dynamodb.DynamoDB {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-
-	// Create DynamoDB client
 	svc := dynamodb.New(sess)
-	params := &dynamodb.ScanInput{
-		TableName: aws.String("stats"),
+	return svc
+}
+
+func main() {
+	svc := GetDynamoDBClient()
+	d := dependencies{
+		db: svc,
 	}
-	result, err := svc.Scan(params)
+	lambda.Start(d.GetStats)
+}
+
+func (d *dependencies) GetStats(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	stats, err := d.GetStatsFromDB()
 	if err != nil {
-		log.Printf("Query API call failed: %s", err)
+		respondError(http.StatusInternalServerError)
 	}
 
 	var stat Stat
-	for _, i := range result.Items {
-		item := StatDB{}
-
-		err = dynamodbattribute.UnmarshalMap(i, &item)
-		log.Print(item)
-		if err != nil {
-			log.Printf("Got error unmarshalling: %s", err)
-			return respond(http.StatusInternalServerError)
-		}
-
-		if item.DnaType == HUMAN {
-			stat.Human = item.Count
-		} else {
-			stat.Mutant = item.Count
-		}
-		stat.Ratio = float64(stat.Mutant) / float64(stat.Human)
+	err = stat.SetValues(stats)
+	if err != nil {
+		respondError(http.StatusInternalServerError)
 	}
-	log.Print("Finalizando")
 	return respondOk(stat)
 }
 
-func respond(status int) (events.APIGatewayProxyResponse, error) {
+func (d *dependencies) GetStatsFromDB() ([]map[string]*dynamodb.AttributeValue, error) {
+	params := &dynamodb.ScanInput{
+		TableName: aws.String("stats"),
+	}
+	result, err := d.db.Scan(params)
+	if err != nil {
+		log.Printf("Query API call failed: %s", err)
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (s *Stat) SetCount(dnaType string, count int) {
+	if dnaType == HUMAN {
+		s.Human = count
+	} else {
+		s.Mutant = count
+	}
+}
+
+func (s *Stat) SetRatio(countA float64, countB float64) {
+	s.Ratio = countA / countB
+}
+
+func (s *Stat) SetValues(items []map[string]*dynamodb.AttributeValue) error {
+	for _, i := range items {
+		item, err := ParseItem(i)
+		if err != nil {
+			return err
+		}
+		s.SetCount(item.DnaType, item.Count)
+	}
+	s.SetRatio(float64(s.Mutant), float64(s.Human))
+	return nil
+}
+
+func ParseItem(item map[string]*dynamodb.AttributeValue) (StatDB, error) {
+	stat := StatDB{}
+	err := dynamodbattribute.UnmarshalMap(item, &stat)
+	if err != nil {
+		log.Printf("Got error unmarshalling: %s", err)
+	}
+	return stat, err
+}
+
+func respondError(status int) (events.APIGatewayProxyResponse, error) {
 	return events.APIGatewayProxyResponse{
 		StatusCode: status,
 		Body:       http.StatusText(status),
