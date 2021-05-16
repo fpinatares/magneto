@@ -63,19 +63,18 @@ func main() {
 	lambda.Start(d.GetStats)
 }
 
-// Probar si funciona bien sacando el req
-func (d *dependencies) GetStats(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (d *dependencies) GetStats() (events.APIGatewayProxyResponse, error) {
 	stats, err := d.GetStatsFromDB()
 	if err != nil {
-		respondError(http.StatusInternalServerError)
+		return RespondError(http.StatusInternalServerError)
 	}
 
 	var stat Stat
 	err = stat.SetValues(stats)
 	if err != nil {
-		respondError(http.StatusInternalServerError)
+		return RespondError(http.StatusInternalServerError)
 	}
-	return respondOk(stat)
+	return RespondOk(stat)
 }
 
 func (d *dependencies) GetStatsFromDB() ([]map[string]*dynamodb.AttributeValue, error) {
@@ -102,7 +101,11 @@ func (s *Stat) SetCount(dnaType string, count int) error {
 }
 
 func (s *Stat) CalculateRatio() {
-	s.Ratio = float64(s.Mutant) / float64(s.Human)
+	if s.Human == 0 {
+		s.Ratio = float64(s.Mutant)
+	} else {
+		s.Ratio = float64(s.Mutant) / float64(s.Human)
+	}
 }
 
 func (s *Stat) SetValues(items []map[string]*dynamodb.AttributeValue) error {
@@ -126,14 +129,14 @@ func ParseItem(item map[string]*dynamodb.AttributeValue) (StatDB, error) {
 	return stat, err
 }
 
-func respondError(status int) (events.APIGatewayProxyResponse, error) {
+func RespondError(status int) (events.APIGatewayProxyResponse, error) {
 	return events.APIGatewayProxyResponse{
 		StatusCode: status,
 		Body:       http.StatusText(status),
 	}, nil
 }
 
-func respondOk(stat Stat) (events.APIGatewayProxyResponse, error) {
+func RespondOk(stat Stat) (events.APIGatewayProxyResponse, error) {
 	bytes, _ := json.Marshal(stat)
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
