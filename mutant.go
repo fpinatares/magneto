@@ -10,11 +10,9 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go/service/sns/snsiface"
 	"github.com/google/uuid"
 )
 
@@ -54,6 +52,8 @@ asumo que el ratio se calcula mutantes dividido humanos
 asumo que para decir si es una secuencia diagonal, cuento a
 partir desde donde estoy parado sin mirar atras
 validar tamaño de array que todos los strings sean del mismo largo y length del array?
+argumentar porque ratio es la cantidad de mutantes cuando humanos es 0
+Documentar que el ratio se redondeó a 2 números decimales
 */
 
 type DnaData struct {
@@ -63,15 +63,14 @@ type DnaData struct {
 }
 
 type dependencies struct {
-	db dynamodbiface.DynamoDBAPI
+	notifier snsiface.SNSAPI
 }
 
 func main() {
-	svc := GetDynamoDBClient()
+	svc := GetSNSClient()
 	d := dependencies{
-		db: svc,
+		notifier: svc,
 	}
-
 	lambda.Start(d.DetectMutant)
 }
 
@@ -85,13 +84,21 @@ func (d *dependencies) DetectMutant(req events.APIGatewayProxyRequest) (events.A
 	}
 	dnaData.Uuid = uuid.New().String()
 	dnaData.Type = GetDnaType(dnaData.Dna)
+	json, _ := json.Marshal(dnaData)
 
-	// TO DO: Make it async
-	err = d.UpdateData(dnaData)
+	message := string(json)
+	messagePtr := &message
+
+	topicArn := "arn:aws:sns:us-east-1:870963517916:save-dna"
+	topicArnPtr := &topicArn
+
+	_, err = d.notifier.Publish(&sns.PublishInput{
+		Message:  messagePtr,
+		TopicArn: topicArnPtr,
+	})
 	if err != nil {
-		return Respond(http.StatusInternalServerError)
+		log.Print(err)
 	}
-
 	if dnaData.Type != EnumDnaType.Mutant {
 		return Respond(http.StatusForbidden)
 	}
@@ -121,67 +128,11 @@ func ParseRequest(body string) (DnaData, error) {
 	return *dnaData, nil
 }
 
-func (d *dependencies) UpdateData(dnaData DnaData) error {
-	err := d.SaveDna(dnaData)
-	if err != nil {
-		return err
-	}
-	err = d.UpdateStats(dnaData.Type)
-	return err
-}
-
-func (d *dependencies) UpdateStats(dnaType string) error {
-	input := CreateUpdateItemInput(dnaType)
-	_, err := d.db.UpdateItem(input)
-	if err != nil {
-		log.Printf("Got error calling UpdateItem: %s", err)
-		return err
-	}
-	return nil
-}
-
-func CreateUpdateItemInput(dnaType string) *dynamodb.UpdateItemInput {
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String(STATS_TABLE),
-		Key: map[string]*dynamodb.AttributeValue{
-			"dna_type": {
-				S: aws.String(dnaType),
-			},
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":inc": {
-				N: aws.String("1"),
-			},
-		},
-		UpdateExpression: aws.String("ADD type_count :inc"),
-	}
-	return input
-}
-
-func (d *dependencies) SaveDna(dnaData DnaData) error {
-	av, err := dynamodbattribute.MarshalMap(dnaData)
-	if err != nil {
-		log.Printf("Got error calling MarshalMap: %s", err)
-		return err
-	}
-	tableName := DNAS_TABLE
-	input := &dynamodb.PutItemInput{
-		Item:      av,
-		TableName: aws.String(tableName),
-	}
-	_, err = d.db.PutItem(input)
-	if err != nil {
-		log.Printf("Got error calling PutItem: %s", err)
-		return err
-	}
-	return nil
-}
-
-func GetDynamoDBClient() *dynamodb.DynamoDB {
+func GetSNSClient() *sns.SNS {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	svc := dynamodb.New(sess)
+	svc := sns.New(sess)
 	return svc
 }
 
@@ -207,7 +158,7 @@ func IsMutant(dna []string) bool {
 	sequences := 0
 	for i := 0; i < length; i++ {
 		for j := 0; j < length; j++ {
-			isSequence := isSequence(i, j, dna)
+			isSequence := IsSequence(i, j, dna)
 			if isSequence {
 				sequences++
 				if sequences >= NECESSARY_SECUENCES {
@@ -219,7 +170,7 @@ func IsMutant(dna []string) bool {
 	return false
 }
 
-func isSequence(i int, j int, dna []string) bool {
+func IsSequence(i int, j int, dna []string) bool {
 	return IsHorizontalSequence(i, j, dna) ||
 		IsVerticalSequence(i, j, dna) ||
 		IsDiagonalSequence(i, j, dna)
