@@ -4,20 +4,15 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
-	"github.com/google/uuid"
+	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go/service/sns/snsiface"
 )
 
-type mockDynamoDBClient struct {
-	dynamodbiface.DynamoDBAPI
+type mockSNSClient struct {
+	snsiface.SNSAPI
 }
 
-func (m *mockDynamoDBClient) UpdateItem(input *dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {
-	return nil, nil
-}
-
-func (m *mockDynamoDBClient) PutItem(input *dynamodb.PutItemInput) (*dynamodb.PutItemOutput, error) {
+func (m *mockSNSClient) Publish(input *sns.PublishInput) (*sns.PublishOutput, error) {
 	return nil, nil
 }
 
@@ -27,7 +22,7 @@ func TestDetectMutantWithNotAcceptableContentType(t *testing.T) {
 	}
 	req.Headers["content-type"] = "application/xml"
 	d := dependencies{
-		db: &mockDynamoDBClient{},
+		notifier: &mockSNSClient{},
 	}
 	response, _ := d.DetectMutant(req)
 	if response.StatusCode != 406 {
@@ -42,7 +37,7 @@ func TestDetectMutantWithEmptyBody(t *testing.T) {
 	}
 	req.Headers["content-type"] = "application/json"
 	d := dependencies{
-		db: &mockDynamoDBClient{},
+		notifier: &mockSNSClient{},
 	}
 	response, _ := d.DetectMutant(req)
 	if response.StatusCode != 400 {
@@ -57,7 +52,7 @@ func TestDetectNoMutantRespondsForbidden(t *testing.T) {
 	}
 	req.Headers["content-type"] = "application/json"
 	d := dependencies{
-		db: &mockDynamoDBClient{},
+		notifier: &mockSNSClient{},
 	}
 	response, _ := d.DetectMutant(req)
 	if response.StatusCode != 403 {
@@ -72,48 +67,11 @@ func TestDetectMutantRespondsOk(t *testing.T) {
 	}
 	req.Headers["content-type"] = "application/json"
 	d := dependencies{
-		db: &mockDynamoDBClient{},
+		notifier: &mockSNSClient{},
 	}
 	response, _ := d.DetectMutant(req)
 	if response.StatusCode != 200 {
 		t.Error("200 - Ok http status code expected. Got:", response.StatusCode)
-	}
-}
-
-func TestUpdateStats(t *testing.T) {
-	d := dependencies{
-		db: &mockDynamoDBClient{},
-	}
-	err := d.UpdateStats(EnumDnaType.Mutant)
-	if err != nil {
-		t.Error("No error expected updating stats", err)
-	}
-}
-
-func TestSaveDna(t *testing.T) {
-	dnaData := new(DnaData)
-	dnaData.Uuid = uuid.New().String()
-	dnaData.Type = EnumDnaType.Mutant
-	d := dependencies{
-		db: &mockDynamoDBClient{},
-	}
-	err := d.SaveDna(*dnaData)
-	if err != nil {
-		t.Error("No error expected saving dna", err)
-	}
-}
-
-func TestUpdateData(t *testing.T) {
-	dnaData := new(DnaData)
-	dnaData.Dna = []string{"AAXAAA", "XXXXXX", "XXXXXX", "XXXXXX", "XXXXXX", "XXXXXX"}
-	dnaData.Type = EnumDnaType.Human
-	dnaData.Uuid = uuid.New().String()
-	d := dependencies{
-		db: &mockDynamoDBClient{},
-	}
-	err := d.UpdateData(*dnaData)
-	if err != nil {
-		t.Error("No error expected updating data", err)
 	}
 }
 
