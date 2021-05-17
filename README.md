@@ -31,12 +31,16 @@ zip magneto-stats.zip stat
 ```
 
 ## Lambda configuration ##
-For the lambda with the function to detect mutans, we have to set 2 environment variables:
+For the lambda with the function to detect mutans, it is necessary to set 2 environment variables:
 * NECESSARY_SEQUENCE (Which for what the requirements says it is 4 by now)
 * NECESSARY_SEQUENCES (Which for what the requirements says it is 2 by now)
 
-For the lambda with the function to retrieve stats, we have to set the following environment variable:
-* NECESSARY_SEQUENCES (The value by now is stats)
+For the lambda with the function to retrieve stats, it is necessary to set the following environment variable:
+* STATS_TABLE_NAME (The value by now is stats)
+
+For the lambda with the function that save dnas, it is necessary to the the next environment variables:
+* STATS_TABLE_NAME (The value by now is stats)
+* DNAS_TABLE_NAME (The value by now is dnas)
 
 ## Test ##
 
