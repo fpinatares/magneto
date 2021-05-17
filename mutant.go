@@ -38,24 +38,6 @@ type DnaType struct {
 	Mutant string
 }
 
-/*
-CHEQUEAR QUE LOS TIPOS QUE VENGAN EN EL ADN SEAN DE ESAS 4 LETRAS
-HACER TESTS
-CONTROL DE EXCEPCIONES
-LAMBDA
-API GATEWAY
-TENGO EL NECESSARY_SECUENCE COMO CONST
-documentar lo que devolvemos por default si no llega un post o si la request esta mal
-Podria poner el read, parse y validate todo junto en una sola funcion
-adenina (A), citosina (C), guanina (G) y timina (T)
-asumo que el ratio se calcula mutantes dividido humanos
-asumo que para decir si es una secuencia diagonal, cuento a
-partir desde donde estoy parado sin mirar atras
-validar tamaño de array que todos los strings sean del mismo largo y length del array?
-argumentar porque ratio es la cantidad de mutantes cuando humanos es 0
-Documentar que el ratio se redondeó a 2 números decimales
-*/
-
 type DnaData struct {
 	Uuid string   `json:"uuid"`
 	Dna  []string `json:"dna"`
