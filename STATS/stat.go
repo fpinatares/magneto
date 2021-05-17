@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -104,7 +105,7 @@ func (s *Stat) CalculateRatio() {
 	if s.Human == 0 {
 		s.Ratio = float64(s.Mutant)
 	} else {
-		s.Ratio = float64(s.Mutant) / float64(s.Human)
+		s.Ratio = math.Round((float64(s.Mutant)/float64(s.Human))*100) / 100
 	}
 }
 
