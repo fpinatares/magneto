@@ -35,6 +35,9 @@ For the lambda with the function to detect mutans, we have to set 2 environment 
 * NECESSARY_SEQUENCE (Which for what the requirements says it is 4 by now)
 * NECESSARY_SEQUENCES (Which for what the requirements says it is 2 by now)
 
+For the lambda with the function to retrieve stats, we have to set the following environment variable:
+* NECESSARY_SEQUENCES (The value by now is stats)
+
 ## Test ##
 
 To run tests we should execute the following command within each of the packages:
